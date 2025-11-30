@@ -1,0 +1,6 @@
+[project]
+name = "youtube_feed"
+version = "1.0.0"
+
+[project.scripts]
+youtube_feed = "youtube_feed:main"
