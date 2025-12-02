@@ -22,7 +22,7 @@ def get_config(path=Path('~/.config/youtube_feed.toml')):
     path = path.expanduser().resolve()
     with path.open('rb') as f:
         config = tomllib.load(f)
-        assert 'channels' in config and hasattr(config['channels'], '__iter__')
+        assert 'feeds' in config and hasattr(config['feeds'], '__iter__')
         return config
 
 
@@ -44,24 +44,6 @@ class CanonicalLinkParser(HTMLParser):
                 self.canonical = attrs['href']
 
 
-def get_channel_id(channel):
-    parser = CanonicalLinkParser()
-
-    for line in request(channel):
-        parser.feed(line)
-        if parser.canonical:
-            break
-
-    if not parser.canonical:
-        raise ValueError(f'No channel id found for channel {channel}')
-
-    return parser.canonical.split('/')[-1]
-
-
-def get_feed(channel_id):
-    return urllib.request.urlopen(f'https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}')
-
-
 def get_node_text(node):
     texts = []
     for node in node.childNodes:
@@ -70,22 +52,56 @@ def get_node_text(node):
     return ''.join(texts)
 
 
-def get_videos(channel_id):
-    with get_feed(channel_id) as f:
-        doc = xml_parse(f)
-    for entry in doc.getElementsByTagName('entry'):
-        title_node, = entry.getElementsByTagName('title')
-        title = get_node_text(title_node)
-        url_node, = entry.getElementsByTagName('link')
-        url = url_node.attributes['href'].value
-        published_node, = entry.getElementsByTagName('published')
-        published = datetime.fromisoformat(get_node_text(published_node))
+class Feed:
+    def __init__(self, *, channel_id=None, playlist_id=None):
+        if len({channel_id is None, playlist_id is None}) != 2:
+            raise ValueError('channel_id or playlist_id argument is required, not both')
 
-        yield published, title, url
+        if channel_id is not None:
+            self.feed_url = f'https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}'
+        else:
+            self.feed_url = f'https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}'
+
+    @classmethod
+    def from_url(cls, url):
+        if m := re.fullmatch(r'https?://(?:www.?)youtube.com/playlist\?list=(.+)', url):
+            return cls(playlist_id=m[1])
+        return cls(channel_id=cls.get_channel_id(url))
+
+    @staticmethod
+    def get_channel_id(channel_url):
+        parser = CanonicalLinkParser()
+
+        for line in request(channel_url):
+            parser.feed(line)
+            if parser.canonical:
+                break
+
+        if not parser.canonical:
+            raise ValueError(f'No channel id found for channel {channel_url}')
+
+        return parser.canonical.split('/')[-1]
+
+    def get_file(self):
+        return urllib.request.urlopen(self.feed_url)
+
+    def __iter__(self):
+        with self.get_file() as f:
+            doc = xml_parse(f)
+
+        for entry in doc.getElementsByTagName('entry'):
+            title_node, = entry.getElementsByTagName('title')
+            title = get_node_text(title_node)
+            url_node, = entry.getElementsByTagName('link')
+            url = url_node.attributes['href'].value
+            published_node, = entry.getElementsByTagName('published')
+            published = datetime.fromisoformat(get_node_text(published_node))
+
+            yield published, title, url
 
 
-def get_last_videos(channel_id, n=5):
-    videos = sorted(get_videos(channel_id), reverse=True)
+def get_last_videos(feed, n=5):
+    videos = sorted(feed, reverse=True)
     return videos[:n]
 
 
@@ -101,12 +117,13 @@ def main():
     if since is not None:
         since = datetime.fromisoformat(since).astimezone()
 
-    for channel in config['channels']:
-        print('#', channel)
+    for feed_url in config['feeds']:
+        print('#', feed_url)
         print()
-        channel_id = get_channel_id(channel)
 
-        for published, title, url in get_last_videos(channel_id):
+        feed = Feed.from_url(feed_url)
+
+        for published, title, url in get_last_videos(feed):
             if since is None or published >= since:
                 print('##', title)
                 print('- ', url)
