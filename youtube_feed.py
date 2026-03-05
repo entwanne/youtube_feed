@@ -121,14 +121,17 @@ def main():
         print('#', feed_url)
         print()
 
-        feed = Feed.from_url(feed_url)
+        try:
+            feed = Feed.from_url(feed_url)
 
-        for published, title, url in get_last_videos(feed):
-            if since is None or published >= since:
-                print('##', title)
-                print('- ', url)
-                print('- ', f'{published:%d %B %Y}')
-                print()
+            for published, title, url in get_last_videos(feed):
+                if since is None or published >= since:
+                    print('##', title)
+                    print('- ', url)
+                    print('- ', f'{published:%d %B %Y}')
+                    print()
+        except Exception as e:
+            print(e)
 
         print('=' * 20)
         print()
