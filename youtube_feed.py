@@ -118,19 +118,27 @@ def main():
         since = datetime.fromisoformat(since).astimezone()
 
     for feed_url in config['feeds']:
-        print('#', feed_url)
-        print()
-
         try:
             feed = Feed.from_url(feed_url)
+            videos = [
+                video
+                for video in get_last_videos(feed)
+                if since is None or video[0] >= since
+            ]
 
-            for published, title, url in get_last_videos(feed):
-                if since is None or published >= since:
-                    print('##', title)
-                    print('- ', url)
-                    print('- ', f'{published:%d %B %Y}')
-                    print()
+            if not videos:
+                continue
+
+            print('#', feed_url)
+            print()
+
+            for published, title, url in videos:
+                print('##', title)
+                print('- ', url)
+                print('- ', f'{published:%d %B %Y}')
+                print()
         except Exception as e:
+            print('#', feed_url)
             print(e)
 
         print('=' * 20)
