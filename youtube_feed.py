@@ -15,6 +15,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--locale', default=None)
     parser.add_argument('--since', default=None)
+    parser.add_argument('--sort', choices=['channel', 'date'], default=None)
     return parser
 
 
@@ -105,6 +106,38 @@ def get_last_videos(feed, n=5):
     return videos[:n]
 
 
+def get_all_videos(feed_urls, since):
+    for feed_url in feed_urls:
+        try:
+            feed = Feed.from_url(feed_url)
+            for video in get_last_videos(feed):
+                if since is None or video[0] >= since:
+                    yield feed_url, *video
+        except Exception as e:
+            print('#', feed_url)
+            print(e)
+            print('=' * 20)
+            print()
+
+
+def print_videos(videos):
+    last_feed_url = None
+
+    for feed_url, published, title, url in videos:
+        if feed_url != last_feed_url:
+            if last_feed_url is not None:
+                print('=' * 20)
+                print()
+            print('#', feed_url)
+            print()
+            last_feed_url = feed_url
+
+        print('##', title)
+        print('- ', url)
+        print('- ', f'{published:%d %B %Y}')
+        print()
+
+
 def main():
     config = get_config()
     args = get_parser().parse_args()
@@ -117,33 +150,14 @@ def main():
     if since is not None:
         since = datetime.fromisoformat(since).astimezone()
 
-    for feed_url in config['feeds']:
-        try:
-            feed = Feed.from_url(feed_url)
-            videos = [
-                video
-                for video in get_last_videos(feed)
-                if since is None or video[0] >= since
-            ]
+    sort = args.sort or config.get('sort', 'channel')
 
-            if not videos:
-                continue
+    videos = get_all_videos(config['feeds'], since)
 
-            print('#', feed_url)
-            print()
+    if sort == 'date':
+        videos = sorted(videos, key=lambda v: v[1])
 
-            for published, title, url in videos:
-                print('##', title)
-                print('- ', url)
-                print('- ', f'{published:%d %B %Y}')
-                print()
-        except Exception as e:
-            print('#', feed_url)
-            print(e)
-
-        print('=' * 20)
-        print()
-
+    print_videos(videos)
 
 if __name__ == '__main__':
     main()
