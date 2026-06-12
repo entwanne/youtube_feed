@@ -16,6 +16,7 @@ def get_parser():
     parser.add_argument('--locale', default=None)
     parser.add_argument('--since', default=None)
     parser.add_argument('--sort', choices=['channel', 'date'], default=None)
+    parser.add_argument('--limit', type=int, default=None)
     return parser
 
 
@@ -101,16 +102,18 @@ class Feed:
             yield published, title, url
 
 
-def get_last_videos(feed, n=5):
+def get_last_videos(feed, limit=None):
     videos = sorted(feed, reverse=True)
-    return videos[:n]
+    if limit is not None: # limit is 15 by default on youtube
+        videos = videos[:limit]
+    return videos
 
 
-def get_all_videos(feed_urls, since):
+def get_all_videos(feed_urls, since, limit=None):
     for feed_url in feed_urls:
         try:
             feed = Feed.from_url(feed_url)
-            for video in get_last_videos(feed):
+            for video in get_last_videos(feed, limit):
                 if since is None or video[0] >= since:
                     yield feed_url, *video
         except Exception as e:
@@ -151,8 +154,9 @@ def main():
         since = datetime.fromisoformat(since).astimezone()
 
     sort = args.sort or config.get('sort', 'channel')
+    limit = args.limit or config.get('limit')
 
-    videos = get_all_videos(config['feeds'], since)
+    videos = get_all_videos(config['feeds'], since, limit)
 
     if sort == 'date':
         videos = sorted(videos, key=lambda v: v[1])
