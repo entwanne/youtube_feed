@@ -5,6 +5,7 @@ import locale
 import re
 import tomllib
 import urllib.request
+import zoneinfo
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -14,6 +15,7 @@ from xml.dom.minidom import parse as xml_parse
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--locale', default=None)
+    parser.add_argument('--timezone', default=None)
     parser.add_argument('--since', default=None)
     parser.add_argument('--sort', choices=['channel', 'date'], default=None)
     parser.add_argument('--limit', type=int, default=None)
@@ -98,6 +100,7 @@ class Feed:
             url = url_node.attributes['href'].value
             published_node, = entry.getElementsByTagName('published')
             published = datetime.fromisoformat(get_node_text(published_node))
+            assert published.tzinfo is not None
 
             yield published, title, url
 
@@ -109,7 +112,7 @@ def get_last_videos(feed, limit=None):
     return videos
 
 
-def get_all_videos(feed_urls, since, limit=None):
+def get_all_videos(feed_urls, since, limit=None, tz=None):
     for feed_url in feed_urls:
         try:
             feed = Feed.from_url(feed_url)
@@ -123,7 +126,7 @@ def get_all_videos(feed_urls, since, limit=None):
             print()
 
 
-def print_videos(videos):
+def print_videos(videos, timezone=None):
     last_feed_url = None
 
     for feed_url, published, title, url in videos:
@@ -137,7 +140,9 @@ def print_videos(videos):
 
         print('##', title)
         print('- ', url)
-        print('- ', f'{published:%d %B %Y}')
+        if timezone:
+            published = published.astimezone(timezone)
+        print('- ', f'{published:%d %B %Y %H:%M:%S}')
         print()
 
 
@@ -149,9 +154,17 @@ def main():
     if loc:
         locale.setlocale(locale.LC_ALL, loc)
 
+    tz = args.timezone or config.get('timezone')
+    if tz:
+        tz = zoneinfo.ZoneInfo(tz)
+    else:
+        tz = datetime.now().astimezone().tzinfo
+
     since = args.since or config.get('since')
     if since is not None:
-        since = datetime.fromisoformat(since).astimezone()
+        since = datetime.fromisoformat(since)
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=tz)
 
     sort = args.sort or config.get('sort', 'channel')
     limit = args.limit or config.get('limit')
@@ -161,7 +174,7 @@ def main():
     if sort == 'date':
         videos = sorted(videos, key=lambda v: v[1])
 
-    print_videos(videos)
+    print_videos(videos, timezone=tz)
 
 if __name__ == '__main__':
     main()
