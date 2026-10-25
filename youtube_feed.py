@@ -75,16 +75,23 @@ class Feed:
     @staticmethod
     def get_channel_id(channel_url):
         parser = CanonicalLinkParser()
+        manual = ''
 
         for line in request(channel_url):
             parser.feed(line)
             if parser.canonical:
                 break
 
-        if not parser.canonical:
-            raise ValueError(f'No channel id found for channel {channel_url}')
+            elif 'rel="canonical"' in line:
+                manual += line
 
-        return parser.canonical.split('/')[-1]
+        if parser.canonical:
+            return parser.canonical.split('/')[-1]
+
+        if manual and (m := re.search(r'<link rel="canonical" href="([^"]+)"', manual)):
+            return m[1].split('/')[-1]
+
+        raise ValueError(f'No channel id found for channel {channel_url}')
 
     def get_file(self):
         return urllib.request.urlopen(self.feed_url)
